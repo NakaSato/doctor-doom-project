@@ -1,0 +1,64 @@
+{
+  "timestamp": "2026-03-18T23:09:09.792210",
+  "image_stats": {
+    "min": 32.526798248291016,
+    "max": 82.34339904785156,
+    "mean": 46.545841217041016,
+    "median": 46.40441131591797,
+    "std": 3.6490797996520996,
+    "variance": 13.315783500671387,
+    "skewness": 1.7887648344039917,
+    "kurtosis": 10.686697959899902,
+    "p5": 41.3928337097168,
+    "p25": 44.178550720214844,
+    "p75": 48.61634063720703,
+    "p95": 51.523948669433594,
+    "p99": 58.450836181640625,
+    "iqr": 4.4377899169921875,
+    "range": 49.81660079956055
+  },
+  "modules_processed": 5,
+  "defects_found": 2,
+  "results": [
+    {
+      "module_id": "mod_000",
+      "defect_type": "normal",
+      "severity": "low",
+      "confidence": 0.9416136521646477,
+      "temperature_delta": 9.877094268798828,
+      "anomaly_score": 0.108973607300688
+    },
+    {
+      "module_id": "mod_001",
+      "defect_type": "hotspot",
+      "severity": "medium",
+      "confidence": 0.8873442698819185,
+      "temperature_delta": 35.79755783081055,
+      "anomaly_score": 0.7126677879814516
+    },
+    {
+      "module_id": "mod_002",
+      "defect_type": "normal",
+      "severity": "low",
+      "confidence": 0.9517541048394021,
+      "temperature_delta": 5.275482177734375,
+      "anomaly_score": 0.2032873114594316
+    },
+    {
+      "module_id": "mod_003",
+      "defect_type": "normal",
+      "severity": "low",
+      "confidence": 0.9141606564621824,
+      "temperature_delta": 4.197216033935547,
+      "anomaly_score": 0.21444012052377392
+    },
+    {
+      "module_id": "mod_004",
+      "defect_type": "cell_anomaly",
+      "severity": "high",
+      "confidence": 0.8796261422533419,
+      "temperature_delta": 24.001949310302734,
+      "anomaly_score": 0.7238593376715396
+    }
+  ]
+}

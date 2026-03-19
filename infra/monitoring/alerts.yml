@@ -1,0 +1,72 @@
+groups:
+  - name: doctor-doom-alerts
+    rules:
+      # Service Down Alert
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 1 minute."
+
+      # High Error Rate Alert
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Service {{ $labels.job }} has error rate above 10%"
+
+      # High Latency Alert
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+          description: "Service {{ $labels.job }} p95 latency above 1s"
+
+      # Redis Memory Alert
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis memory usage is above 90%"
+
+      # PostgreSQL Connections Alert
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections high"
+          description: "PostgreSQL connection usage is above 80%"
+
+      # ML Inference Queue Backlog
+      - alert: MLQueueBacklog
+        expr: redis_stream_length{stream="thermal:calibrated"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ML inference queue backlog"
+          description: "More than 100 items waiting in ML queue"
+
+      # Disk Space Alert
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space low"
+          description: "Disk space is below 10% on {{ $labels.mountpoint }}"

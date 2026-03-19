@@ -1,0 +1,7 @@
+# ML Service Test Dependencies
+pytest==8.1.1
+pytest-cov==4.1.0
+numpy>=1.24.0
+scipy>=1.10.0
+scikit-image>=0.20.0
+opencv-python>=4.8.0

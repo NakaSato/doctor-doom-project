@@ -1,0 +1,240 @@
+version: '3.8'
+
+# Edge Deployment Configuration (Mac M2)
+# Optimized for local/offline operation with CoreML acceleration
+
+services:
+  # Include all base services
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ML_INFERENCE_URL=http://ml-inference:8001
+      - REPORT_URL=http://report:8002
+      - NOTIFY_URL=http://notify:8003
+      - GEO_URL=http://geo:7800
+      - AUTH_URL=http://auth:8004
+      - DEVICE=mps  # Use Metal Performance Shaders on M2
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  ml-inference:
+    build:
+      context: ./services/ml-inference
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MODEL_PATH=/app/models
+      - DEVICE=mps  # Metal Performance Shaders for M2
+      - INFERENCE_TIMEOUT_MS=35
+    volumes:
+      - ./models:/app/models
+      - /tmp/cache:/tmp/cache  # Model cache
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # Reduced resource services
+  report:
+    build:
+      context: ./services/report
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - REDIS_HOST=redis
+      - MINIO_ENDPOINT=minio:9000
+      - GEO_URL=http://geo:7800
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  notify:
+    build:
+      context: ./services/notify
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - REDIS_HOST=redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  geo:
+    build:
+      context: ./services/geo
+      dockerfile: Dockerfile
+    ports:
+      - "7800:7800"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/doctor_doom
+      - TIMESCALE_URL=postgresql://postgres:postgres@timescaledb:5432/telemetry
+      - REDIS_HOST=redis
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  ingest-worker:
+    build:
+      context: ./services/ingest-worker
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - REDIS_HOST=redis
+      - MINIO_ENDPOINT=minio:9000
+      - GEO_URL=http://geo:7800
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  auth:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/doctor_doom
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # Infrastructure
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 1gb
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgis/postgis:15-3.3
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=doctor_doom
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=telemetry
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./infra/timescaledb/init.sql:/docker-entrypoint-initdb.d/init.sql
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb --ignore-existing myminio/thermal-images;
+      /usr/bin/mc mb --ignore-existing myminio/reports;
+      /usr/bin/mc mb --ignore-existing myminio/models;
+      exit 0;
+      "
+    networks:
+      - doctor-doom-network
+
+networks:
+  doctor-doom-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
+  timescale-data:
+  minio-data:

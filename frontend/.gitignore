@@ -1,0 +1,29 @@
+# Frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+playwright-report/
+test-results/
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,0 +1,261 @@
+version: '3.8'
+
+services:
+  # ==================== API Gateway ====================
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ML_INFERENCE_URL=http://ml-inference:8001
+      - REPORT_URL=http://report:8002
+      - NOTIFY_URL=http://notify:8003
+      - GEO_URL=http://geo:7800
+      - AUTH_URL=http://auth:8004
+    depends_on:
+      - redis
+      - ml-inference
+      - report
+      - notify
+      - geo
+      - auth
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # ==================== ML Inference ====================
+  ml-inference:
+    build:
+      context: ./services/ml-inference
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MODEL_PATH=/app/models
+      - DEVICE=cpu
+    volumes:
+      - ./models:/app/models
+    depends_on:
+      - redis
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # ==================== Report Service ====================
+  report:
+    build:
+      context: ./services/report
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_BUCKET=reports
+      - GEO_URL=http://geo:7800
+    depends_on:
+      - redis
+      - minio
+      - geo
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # ==================== Notify Service ====================
+  notify:
+    build:
+      context: ./services/notify
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+    depends_on:
+      - redis
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # ==================== Geo Service ====================
+  geo:
+    build:
+      context: ./services/geo
+      dockerfile: Dockerfile
+    ports:
+      - "7800:7800"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/doctor_doom
+      - TIMESCALE_URL=postgresql://postgres:postgres@timescaledb:5432/telemetry
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - timescaledb
+      - redis
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # ==================== Ingest Worker ====================
+  ingest-worker:
+    build:
+      context: ./services/ingest-worker
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_BUCKET=thermal-images
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - GEO_URL=http://geo:7800
+    volumes:
+      - ./data/ingestion:/app/data
+    depends_on:
+      - redis
+      - minio
+      - geo
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # ==================== Auth Service ====================
+  auth:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/doctor_doom
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    depends_on:
+      - postgres
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+
+  # ==================== Redis (Message Bus) ====================
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== PostgreSQL + PostGIS ====================
+  postgres:
+    image: postgis/postgis:15-3.3
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=doctor_doom
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== TimescaleDB ====================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=telemetry
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./infra/timescaledb/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== MinIO (S3 Compatible Storage) ====================
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - doctor-doom-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ==================== MinIO Bucket Setup ====================
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb --ignore-existing myminio/thermal-images;
+      /usr/bin/mc mb --ignore-existing myminio/reports;
+      /usr/bin/mc mb --ignore-existing myminio/models;
+      /usr/bin/mc policy set public myminio/reports;
+      exit 0;
+      "
+    networks:
+      - doctor-doom-network
+
+networks:
+  doctor-doom-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
+  timescale-data:
+  minio-data:

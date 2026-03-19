@@ -1,0 +1,23 @@
+# Docker Compose
+docker-compose.yml
+docker-compose.*.yml
+
+# Environment
+.env
+.env.*
+
+# Data volumes
+data/
+models/
+reports/
+
+# Logs
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
