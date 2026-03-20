@@ -12,9 +12,9 @@ from pathlib import Path
 import sys
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from features import (
+from src.features.extractor import (
     extract_temperature_stats,
     extract_spatial_gradients,
     extract_glcm_texture,
@@ -25,12 +25,12 @@ from features import (
     normalize_features,
     FeatureResult
 )
-from thermal_utils import (
+from src.features.thermal import (
     normalize_temperature,
     compute_temperature_statistics,
     temperature_to_pseudo_rgb,
     ThermalMetadata,
-    ThermalImage
+    ThermalImage,
 )
 
 

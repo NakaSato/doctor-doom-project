@@ -85,8 +85,9 @@ def train(args, config):
         model = YOLO('yolov8n-seg.yaml')
     
     # Training arguments
+    data_path = args.data if args.data.endswith('.yaml') else f'{args.data}/data.yaml'
     train_args = {
-        'data': f'{args.data}/data.yaml',
+        'data': data_path,
         'epochs': args.epochs,
         'batch': args.batch_size,
         'imgsz': args.imgsz,
@@ -94,11 +95,22 @@ def train(args, config):
         'workers': args.workers,
         'project': args.project,
         'name': args.name,
-        'patience': 50,
+        'patience': 100,
         'verbose': True,
         'save': True,
         'plots': True,
         'exist_ok': True,
+        # Stable training settings
+        'lr0': 0.001,  # Lower initial learning rate
+        'lrf': 0.01,   # Final learning rate
+        'momentum': 0.9,
+        'weight_decay': 0.0005,
+        'warmup_epochs': 5.0,
+        'warmup_momentum': 0.5,
+        'box': 7.5,
+        'cls': 0.5,
+        'dfl': 1.5,
+        'amp': True,   # Automatic mixed precision
     }
     
     print()

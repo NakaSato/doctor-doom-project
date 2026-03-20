@@ -37,8 +37,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
-COPY *.py ./
+COPY src/ ./src/
 COPY models/ ./models/
+COPY main.py ./main.py
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH"
@@ -60,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 EXPOSE 8001
 
 # Run service
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]

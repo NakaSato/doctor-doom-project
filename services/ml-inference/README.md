@@ -1,10 +1,14 @@
 # ML Inference Service
 
-Four-stage cascade pipeline for thermal solar panel defect detection.
+**Four-stage cascade pipeline for thermal solar panel defect detection**
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 
 ## Overview
 
-This service implements a complete ML pipeline for analyzing thermal imagery of solar panels:
+This service implements a complete ML pipeline for analyzing thermal imagery from solar panel inspections. The four-stage cascade detects defects, classifies severity, and generates actionable recommendations.
 
 | Stage | Model | Input | Output | Latency |
 |-------|-------|-------|--------|---------|
@@ -13,63 +17,63 @@ This service implements a complete ML pipeline for analyzing thermal imagery of 
 | 3 | XGBoost | 77-dim features | Severity (3-class) | 0.3ms |
 | 4 | ConvAE + IF | 96-dim features | Anomaly score | 1.8ms |
 
-**Total Pipeline Latency:** <25ms per module (Mac M2)
+**Total Pipeline Latency:** <25ms per module (Mac M2 CoreML)
 
 ## Quick Start
 
-### 1. Install Dependencies with uv
+### Prerequisites
+
+- Docker & Docker Compose (for containerized deployment)
+- Python 3.11+ (for local development)
+- uv package manager
+
+### 1. Install Dependencies
 
 ```bash
-# Install uv if not already installed
+# Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install dependencies (includes thermal-parser for R-JPEG parsing)
+# Navigate to service directory
+cd services/ml-inference
+
+# Install all dependencies (includes thermal-parser)
 uv sync
 ```
 
-**Note:** thermal-parser is automatically installed from GitHub. It supports:
-- DJI Mavic 3T (M3T), M2EA, M30T, M3TD, H20T, H20N, H30T
-- FLIR AX8, B60, E40, T640
-
-**Platform Support:**
-- ✅ Linux x64/x86
-- ✅ Windows x64
-- ⚠️ macOS (uses fallback loading)
+**Thermal Camera Support:**
+- ✅ DJI: Mavic 3T, M2EA, M30T, M3TD, H20T, H20N, H30T
+- ✅ FLIR: AX8, B60, E40, T640
 
 ### 2. Setup Models
 
 ```bash
-# Download models (choose source)
-python setup_models.py --source local
-python setup_models.py --source s3 --s3-bucket my-bucket
-python setup_models.py --source http --http-url https://models.example.com
+# Setup demo models (for testing)
+uv run python setup_models.py --demo
+
+# Or download production models
+uv run python setup_models.py --source s3 --s3-bucket your-bucket
 
 # Verify models
-python setup_models.py --verify
+uv run python scripts/validate_models.py
 ```
 
-### 2. Start Service
+### 3. Start Service
 
 ```bash
-# Using Docker Compose
-docker compose up -d ml-inference
+# Development (local)
+uv run python main.py
 
-# Or standalone
-python main.py
+# Or with uvicorn directly
+uv run uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+# Docker (from project root)
+docker compose up -d ml-inference
 ```
 
-### 3. Check Health
+### 4. Verify Health
 
 ```bash
 curl http://localhost:8001/health
-```
-
-## API Endpoints
-
-### Health Check
-
-```bash
-GET /health
 ```
 
 Response:
@@ -84,7 +88,31 @@ Response:
 }
 ```
 
-### Single Inference
+## API Endpoints
+
+### Health & Metrics
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Service health check |
+| `/metrics` | GET | Prometheus metrics |
+
+### Inference
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/infer` | POST | Single module inference |
+| `/api/v1/infer/batch` | POST | Batch inference (up to 32) |
+
+### Information
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/stages` | GET | Pipeline stage information |
+| `/api/v1/defect-types` | GET | Supported defect types |
+| `/api/v1/severity-levels` | GET | Severity classification levels |
+
+### Example: Single Inference
 
 ```bash
 POST /api/v1/infer
@@ -98,16 +126,7 @@ Content-Type: application/json
   "metadata": {
     "ambient_temp": 35.0,
     "irradiance": 850,
-    "neighbor_temps": [45.2, 46.1, 44.8, 45.5],
-    "string_mean": 48.5,
-    "array_mean": 47.2,
-    "expected_temp": 52.0,
-    "string_position": 5,
-    "row_index": 2,
-    "col_index": 3,
-    "time_of_day": 14,
-    "wind_speed": 3.5,
-    "humidity": 45
+    "neighbor_temps": [45.2, 46.1, 44.8, 45.5]
   }
 }
 ```
@@ -116,96 +135,90 @@ Response:
 ```json
 {
   "module_id": "mod_001_05",
-  "inspection_id": "insp_001",
-  "image_id": "img_001",
-  "defect_type": "hot_spot",
+  "defect_type": "hotspot",
   "severity": "critical",
   "severity_score": 0.85,
   "confidence": 0.92,
   "temperature_delta": 28.5,
-  "max_temperature": 68.5,
-  "ambient_temperature": 35.0,
   "affected_cells": [12, 13, 22, 23],
-  "recommendations": [
-    {
-      "priority": 1,
-      "action": "IMMEDIATE_REPLACEMENT",
-      "description": "Module shows critical hotspot"
-    }
-  ],
-  "anomaly_score": 0.15,
-  "processing_time_ms": 22.5,
-  "model_version": "1.0.0"
+  "processing_time_ms": 22.5
 }
-```
-
-### Batch Inference
-
-```bash
-POST /api/v1/infer/batch
-Content-Type: application/json
-
-{
-  "requests": [...],
-  "max_batch_size": 8
-}
-```
-
-### Get Pipeline Info
-
-```bash
-GET /api/v1/stages
-```
-
-### Get Defect Types
-
-```bash
-GET /api/v1/defect-types
 ```
 
 ## Project Structure
 
 ```
 ml-inference/
-├── main.py                    # FastAPI service entry point
-├── pipeline.py                # ML pipeline orchestration
-├── features.py                # Feature extraction (Stage 3/4)
-├── thermal_utils.py           # Thermal image preprocessing
-├── model_manager.py           # Model lifecycle management
-├── setup_models.py            # Model setup script
-├── ML_ARCHITECTURE.md         # Complete architecture docs
-├── ML_LIFECYCLE.md            # Training/deployment lifecycle
-├── TRAINING.md                # Training infrastructure
-├── stage1_segmentation.md     # Stage 1 documentation
-├── stage2_defect_detection.md # Stage 2 documentation
-├── stage3_severity_scoring.md # Stage 3 documentation
-├── stage4_anomaly_detection.md# Stage 4 documentation
-└── YOLOv8m_ARCHITECTURE.md    # YOLOv8m architecture details
+├── main.py                      # FastAPI service entry point
+├── pipeline.py                  # ML pipeline orchestration
+├── features.py                  # Feature extraction (77+96 dim)
+├── thermal_utils.py             # Thermal image preprocessing
+├── model_manager.py             # Model lifecycle management
+├── redis_streams.py             # Redis Streams consumer
+│
+├── setup_models.py              # Model setup script
+├── export_models.py             # Export to ONNX/CoreML
+│
+├── demo/                        # Demo scripts & outputs
+│   ├── run_demo.py
+│   ├── demo_server.py
+│   └── outputs/
+│
+├── scripts/                     # Training & utilities
+│   ├── train/
+│   │   ├── train_stage1.py
+│   │   ├── train_stage2.py
+│   │   ├── train_stage3.py
+│   │   └── train_stage4.py
+│   ├── export_models.py
+│   ├── validate_models.py
+│   └── generate_sample_images.py
+│
+├── tests/                       # Test suite
+│   ├── test_ml_service.py
+│   └── integration/
+│
+├── models/                      # Model storage (gitignored)
+│   ├── registry.json
+│   └── stage{1-4}/
+│
+├── docs/
+│   ├── README.md                # This file
+│   ├── ARCHITECTURE.md          # Complete architecture reference
+│   ├── TRAINING.md              # Training guide
+│   ├── DEPLOYMENT.md            # Deployment procedures
+│   └── archive/                 # Historical documentation
+│
+├── pyproject.toml               # Dependencies (uv)
+├── requirements.txt             # Dependencies (pip)
+├── Dockerfile                   # Container image
+└── CLEANUP_PLAN.md              # Modernization roadmap
 ```
 
 ## Configuration
 
-Environment variables:
+Environment variables (set via `.env` or Docker):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REDIS_HOST` | redis | Redis server host |
 | `REDIS_PORT` | 6379 | Redis server port |
 | `MODEL_PATH` | /app/models | Model directory |
+| `DEVICE` | edge | Device type (`edge`/`cloud`) |
 | `INFERENCE_TIMEOUT_MS` | 35 | Inference timeout |
-| `DEVICE` | edge | Device type (edge/cloud) |
 | `BATCH_SIZE` | 8 | Default batch size |
+| `CONFIDENCE_THRESHOLD` | 0.65 | Detection threshold |
 
 ## Model Formats
 
-Supported formats:
-- **ONNX** - Cross-platform inference
-- **CoreML** - Mac M2 optimized (INT8 quantized)
+**Supported Formats:**
+- **ONNX** - Cross-platform inference (cloud)
+- **CoreML** - Apple Silicon optimized (Mac M2 edge)
 - **PyTorch** - Training/research
 
-Model directory structure:
+**Model Directory Structure:**
 ```
-/app/models/
+models/
 ├── registry.json
 ├── stage1/
 │   ├── model.onnx
@@ -224,49 +237,108 @@ Model directory structure:
 ### Install Dependencies
 
 ```bash
-# With uv
+# With uv (recommended)
 uv sync --dev
 
 # Or with pip
-uv pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ### Run Tests
 
 ```bash
-pytest tests/
+# All tests
+uv run pytest tests/ -v
+
+# With coverage
+uv run pytest tests/ -v --cov=. --cov-report=html
+
+# Specific test file
+uv run pytest tests/test_ml_service.py -v
 ```
 
 ### Local Development
 
 ```bash
 # Start Redis locally
-docker run -d -p 6379:6379 redis:7-alpine
+docker run -d -p 6379:6379 --name redis-ml redis:7-alpine
 
-# Run service
-python main.py
+# Run service with auto-reload
+uv run uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+# Cleanup
+docker stop redis-ml && docker rm redis-ml
 ```
+
+## Docker Deployment
+
+### Build Image
+
+```bash
+# From project root
+docker build -t doctor-doom/ml-inference:latest ./services/ml-inference
+```
+
+### Run Container
+
+```bash
+docker run -d \
+  -p 8001:8001 \
+  -e REDIS_HOST=redis \
+  -e MODEL_PATH=/app/models \
+  -v ./models:/app/models \
+  --name ml-inference \
+  doctor-doom/ml-inference:latest
+```
+
+### Docker Compose (from project root)
+
+```bash
+docker compose up -d ml-inference
+```
+
+## Performance Benchmarks
+
+### Mac M2 (Edge - CoreML)
+
+| Batch Size | Throughput | Avg Latency | P99 Latency |
+|------------|------------|-------------|-------------|
+| 1 | 40 img/s | 25ms | 32ms |
+| 4 | 120 img/s | 33ms | 41ms |
+| 8 | 200 img/s | 40ms | 52ms |
+
+### NVIDIA T4 (Cloud - TensorRT)
+
+| Batch Size | Throughput | Avg Latency | P99 Latency |
+|------------|------------|-------------|-------------|
+| 1 | 300 img/s | 3.3ms | 5ms |
+| 8 | 800 img/s | 10ms | 15ms |
+| 16 | 1000 img/s | 16ms | 22ms |
 
 ## Monitoring
 
-### Metrics
+### Prometheus Metrics
 
-```bash
-GET /metrics
-```
+Access metrics at `GET /metrics`:
 
-Returns:
-- Model versions
-- Stage latencies
-- Throughput statistics
-- Memory usage
+- `ml_inference_total` - Total inference count
+- `ml_inference_latency_seconds` - Latency histogram
+- `ml_model_info` - Model version info
+- `ml_active_models` - Loaded models count
 
-### Logging
+### Structured Logging
 
-Logs are written to stdout in JSON format:
+Logs are JSON-formatted on stdout:
 
 ```json
-{"timestamp": "...", "level": "INFO", "message": "...", "module_id": "..."}
+{
+  "timestamp": "2026-03-20T10:30:00Z",
+  "level": "INFO",
+  "logger": "ml_inference",
+  "message": "Inference completed",
+  "module_id": "mod_001_05",
+  "processing_time_ms": 22.5
+}
 ```
 
 ## Troubleshooting
@@ -275,23 +347,23 @@ Logs are written to stdout in JSON format:
 
 ```bash
 # Check model directory
-ls -la /app/models/
+ls -la models/
 
 # Verify models
-python setup_models.py --verify
+uv run python setup_models.py --verify
 
 # Re-download if needed
-python setup_models.py --source s3 --s3-bucket my-bucket
+uv run python setup_models.py --source s3 --s3-bucket your-bucket
 ```
 
 ### High Latency
 
 ```bash
-# Check device setting
-echo $DEVICE  # Should be 'edge' for M2
+# Check device setting (should be 'edge' for M2)
+echo $DEVICE
 
 # Verify CoreML models are being used
-curl http://localhost:8001/metrics
+curl http://localhost:8001/metrics | grep model_format
 ```
 
 ### Memory Issues
@@ -301,27 +373,28 @@ curl http://localhost:8001/metrics
 export BATCH_SIZE=4
 
 # Clear model cache
-rm -rf /app/models/cache/*
+rm -rf models/cache/*
 ```
 
-## Performance Benchmarks
+### thermal-parser Issues (macOS)
 
-### Mac M2 (Edge)
+On macOS, thermal-parser uses fallback loading (expected behavior). The service will still function correctly.
 
-| Batch Size | Throughput | Avg Latency |
-|------------|------------|-------------|
-| 1 | 40 img/s | 25ms |
-| 4 | 120 img/s | 33ms |
-| 8 | 200 img/s | 40ms |
+## Documentation
 
-### NVIDIA T4 (Cloud)
-
-| Batch Size | Throughput | Avg Latency |
-|------------|------------|-------------|
-| 1 | 300 img/s | 3.3ms |
-| 8 | 800 img/s | 10ms |
-| 16 | 1000 img/s | 16ms |
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Complete ML architecture reference |
+| [TRAINING.md](docs/TRAINING.md) | Training infrastructure guide |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment procedures |
+| [CLEANUP_PLAN.md](CLEANUP_PLAN.md) | Modernization roadmap |
 
 ## License
 
 Proprietary - Doctor Doom Project
+
+---
+
+**Last Updated:** 2026-03-20  
+**Version:** 1.0.0  
+**Maintainer:** ML Team

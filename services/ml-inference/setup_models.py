@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
-from model_manager import ModelManager, ModelInfo, ModelDownloader, setup_models
+from src.models.manager import ModelManager, ModelInfo, setup_models
 
 
 # Default model configurations
